@@ -1,0 +1,388 @@
+---
+title: "Visualització de dades. Pràctica 2."
+author: "Oriol Bertran"
+date: "`r format(Sys.Date(), '%B %e, %Y')`"
+output:
+  pdf_document:
+    toc: yes
+    latex_engine: xelatex
+header-includes:
+  - \usepackage{longtable}
+  - \usepackage{booktabs}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(encoding = 'UTF-8')
+```
+
+
+## 1. Loading the libraries
+
+```{r load_libraries, include=FALSE}
+
+library(devtools)
+library(knitr)
+library(tidyverse)
+library(tidyr)
+library(dplyr)
+library(fastmap)
+library(writexl)
+library(countrycode)
+library(readxl)
+
+# Downloading the VDEM dataset from github
+# devtools::install_github("vdeminstitute/vdemdata")
+library(vdemdata)
+data(vdem)
+
+# Downloading the world population from github
+# options(timeout = 600)
+# install_github("PPgp/wpp2024")
+library(wpp2024)
+data(pop1dt)
+```
+
+
+## 2. Loading the V-Dem dataset
+
+```{r}
+copy_vdem <- vdem %>%
+  subset(year >= 1900 & year < 2024)
+copy_vdem$region23 <- countrycode(copy_vdem$country_id, origin = "vdem", 
+                                  destination = "region23")
+copy_vdem$region7 <- countrycode(copy_vdem$country_id, origin = "vdem", 
+                                 destination = "region")
+```
+
+
+```{r}
+unmatched_ids <- c( 23, 43, 128, 137, 209, 236)
+unique(copy_vdem$country_name[copy_vdem$country_id %in% unmatched_ids])
+```
+
+```{r}
+copy_vdem <- copy_vdem %>% 
+  mutate(region23 = case_when(
+    country_name == "German Democratic Republic" ~ "Western Europe",
+    country_name == "Zanzibar" ~ "Eastern Africa",
+    country_name == "Kosovo" ~ "Southern Europe",
+    country_name == "South Yemen" ~ "Western Asia",
+    country_name == "Palestine/West Bank" ~ "Western Asia",
+    country_name == "Palestine/British Mandate" ~ "Western Asia",
+    TRUE ~ region23),
+    region7 = case_when(
+      country_name == "Palestine/West Bank" ~ "Middle East & North Africa", 
+      country_name == "Palestine/British Mandate" ~ "Middle East & North Africa",
+      TRUE ~ region7)
+    )
+```
+
+
+## 3. Getting the desired indices and indicators
+
+```{r}
+df <- copy_vdem %>%
+  select(country_name, country_id, region23, region7, year, v2x_regime, 
+         v2x_polyarchy, v2x_libdem, v2x_partipdem, v2x_delibdem, v2x_egaldem, 
+         v2x_freexp_altinf, v2x_frassoc_thick, v2x_suffr, v2x_liberal, v2xcl_rol, 
+         v2x_jucon, v2x_partip, v2x_cspart, v2xdl_delib, v2x_egal, 
+         v2xeg_eqprotec, v2xeg_eqaccess, v2xeg_eqdr, 
+         
+         v2clacfree_ord, v2clacfree_osp, v2cldiscm_ord, v2cldiscm_osp, 
+         v2cldiscw_osp, v2cldiscw_ord, v2clgencl_ord, v2clgencl_osp, 
+         v2mecenefm_ord, v2mecenefm_osp, v2mebias_ord, v2mebias_osp, 
+         v2pepwrses_ord, v2pepwrses_osp, v2pepwrgen_ord, v2pepwrgen_osp, 
+         v2pepwrort_ord, v2pepwrort_osp, v2peedueq_ord, v2peedueq_osp, 
+         v2pehealth_ord, v2pehealth_osp, v2peapsecon_ord, v2peapsecon_osp, 
+         v2peasjsoecon_ord, v2peasjsoecon_osp, v2peapsgen_ord, v2peapsgen_osp, 
+         v2peasjgen_ord, v2peasjgen_osp) %>%
+  subset(year > 1950 & year < 2024)
+
+```
+
+
+## 4. Dividing the dataset between indices and indicators
+
+```{r}
+indices <- df %>%
+  select(country_name, country_id, region23, region7, year, v2x_regime, 
+         v2x_polyarchy, v2x_libdem, v2x_partipdem, v2x_delibdem, v2x_egaldem, 
+         v2x_freexp_altinf, v2x_frassoc_thick, v2x_suffr, v2x_liberal, v2xcl_rol, 
+         v2x_jucon, v2x_partip, v2x_cspart, v2xdl_delib, v2x_egal, 
+         v2xeg_eqprotec, v2xeg_eqaccess, v2xeg_eqdr)
+
+indicators_ord <- df %>%
+  select(country_name, country_id, region23, region7, year, v2clacfree_ord, 
+         v2cldiscm_ord, v2cldiscw_ord, v2clgencl_ord, v2mecenefm_ord, 
+         v2mebias_ord, v2pepwrses_ord, v2pepwrgen_ord, v2pepwrort_ord, 
+         v2peedueq_ord, v2pehealth_ord, v2peapsecon_ord, v2peasjsoecon_ord, 
+         v2peapsgen_ord, v2peasjgen_ord)
+
+indicators_osp <- df %>%
+  select(country_name, country_id, region23, region7, year, v2clacfree_osp, 
+         v2cldiscm_osp, v2cldiscw_osp, v2clgencl_osp, v2mecenefm_osp, 
+         v2mebias_osp, v2pepwrses_osp, v2pepwrgen_osp, v2pepwrort_osp, 
+         v2peedueq_osp, v2pehealth_osp, v2peapsecon_osp, v2peasjsoecon_osp, 
+         v2peapsgen_osp, v2peasjgen_osp)
+```
+
+
+## 5. Preparing the data for visualizations
+
+### 5.1. First visualization: The global map
+
+Using the Liberal Democracy Index (v2x_libdem).
+
+Liberal Democracy Index (LDI) combines the Electoral Democracy Index (EDI) with the liberal dimension: constraints on the executive by the legislature and the judiciary, and the rule of law ensuring respect for civil liberties.
+
+```{r}
+ldi <- indices %>%
+  filter(year != 2024) %>%
+  select(country_name, year, v2x_libdem) %>%
+  pivot_wider(names_from = year, values_from = v2x_libdem)
+
+# data for the first visualization:
+write_xlsx(ldi, 'ldi_1950_2023.xlsx')
+```
+
+### 5.2. Second visualization: Democratization or autocratization? 
+
+Using the Regimes of the World index (v2x_regime).
+
+This classifies the polical regime of a country as:
+
+- 3: Liberal Democracy
+- 2: Electoral Democracy
+- 1: Electoral Autocracy
+- 0: Closed Autocracy
+
+
+```{r}
+regime <- copy_vdem %>%
+  select(country_name, country_id, region23, region7, year, v2x_regime) %>%
+  filter(year < 2024) %>%
+  group_by(country_name) %>%
+  mutate(Difference = v2x_regime - lag(v2x_regime, n=1)) %>%
+  ungroup() %>%
+  mutate(Process = case_when(
+    Difference < 0 ~ "Autocratization",
+    Difference > 0 ~ "Democratization",
+    Difference == 0 ~ NA)
+    )
+
+regime_aut <- regime %>%
+  filter(Process == "Autocratization") %>%
+  group_by(year) %>%
+  summarize(counts_autocratization = n(), .groups = "drop")
+
+regime_dem <- regime %>%
+  filter(Process == "Democratization") %>%
+  group_by(year) %>%
+  summarize(counts_democratization = n(), .groups = "drop")
+
+regime_per_year <- full_join(regime_aut, regime_dem, by = "year") %>%
+  arrange(year)
+
+# write_xlsx(regime_per_year, 'regime_per_year.xlsx')
+```
+
+
+```{r}
+
+# 1) pivoting the data longer
+regime_long <- regime_per_year %>%
+  pivot_longer(
+    cols = c(counts_democratization, counts_autocratization),
+    names_to = "Process",
+    values_to = "Count"
+  ) %>%
+  mutate(Process = case_when(
+    Process == "counts_democratization" ~ "Democratization",
+    Process == "counts_autocratization" ~ "Autocratization"
+  ))
+
+# 2) pivoting the data wider, using year as column names
+regime_pivoted <- regime_long %>%
+  pivot_wider(
+    names_from = year,
+    values_from = Count
+  )
+regime_pivoted[is.na(regime_pivoted)] <- 0
+
+# data for the second visualization:
+write_xlsx(regime_pivoted, 'regime_per_year_pivoted.xlsx')
+```
+
+
+### 5.3. Third visualization: The Evolution of Political Regime Types
+
+```{r}
+
+regime_types_per_year <- regime %>%
+  select(year, v2x_regime) %>%
+  mutate(regime_type = case_when(
+    v2x_regime == 0 ~ "Closed autocracy",
+    v2x_regime == 1 ~ "Electoral autocracy",
+    v2x_regime == 2 ~ "Electoral democracy",
+    v2x_regime == 3 ~ "Liberal democracy"
+  )) %>%
+  group_by(year, regime_type) %>%
+  summarize(count = n(), .groups = "drop") %>%
+  pivot_wider(
+    names_from = regime_type,
+    values_from = count,
+    names_prefix = "count_"
+  ) %>%
+  arrange(year) %>%
+  select(-count_NA)
+
+
+regime_types_wide <- regime_types_per_year %>%
+  pivot_longer(!year, names_to = "regime_type", values_to = "count") %>%
+  pivot_wider(names_from = year, values_from = count) %>%
+  mutate(regime_type = case_when(
+    regime_type == "count_Closed autocracy" ~ "Closed autocracy",
+    regime_type == "count_Electoral autocracy" ~ "Electoral autocracy",
+    regime_type == "count_Electoral democracy" ~ "Electoral democracy",
+    regime_type == "count_Liberal democracy" ~ "Liberal democracy")) %>%
+  rename("Regime type" = regime_type)
+
+# write_xlsx(regime_types_per_year, 'regime_types_per_year.xlsx')
+
+# data for the third visualization:
+write_xlsx(regime_types_wide, 'regime_types_wide.xlsx')
+```
+
+### 5.4. Fourth visualization: Regime Classification by Country Population (Treemap)
+
+```{r}
+
+clean_pop <- pop1dt %>%
+  filter(year == 2023) %>%
+  filter(country_code < 900) %>%
+  rename(country_name = name) %>%
+  select(country_name, pop) %>%
+  mutate(country_name = case_when(
+    country_name == "Bolivia (Plurinational State of)" ~	"Bolivia",
+    country_name == "Cabo Verde" ~	"Cape Verde",
+    country_name == "China, Hong Kong SAR" ~	"Hong Kong",
+    country_name == "Iran (Islamic Republic of)" ~	"Iran",
+    country_name == "Cote d'Ivoire" ~	"Ivory Coast",
+    country_name == "Kosovo (under UNSC res. 1244)" ~	"Kosovo",
+    country_name == "Lao People's Democratic Republic" ~	"Laos",
+    country_name == "Republic of Moldova" ~	"Moldova",
+    country_name == "Dem. People's Republic of Korea" ~	"North Korea",
+    country_name == "Congo" ~	"Republic of the Congo",
+    country_name == "Russian Federation" ~	"Russia",
+    country_name == "Republic of Korea" ~	"South Korea",
+    country_name == "Syrian Arab Republic" ~	"Syria",
+    country_name == "China, Taiwan Province of China" ~	"Taiwan",
+    country_name == "United Republic of Tanzania" ~	"Tanzania",
+    country_name == "Gambia" ~	"The Gambia",
+    country_name == "Venezuela (Bolivarian Republic of)" ~	"Venezuela",
+    country_name == "Viet Nam"	~ "Vietnam",
+    TRUE ~ country_name))
+
+treemap <- regime %>%
+  filter(year == 2023) %>%
+  mutate(regime_type = case_when(
+    v2x_regime == 0 ~ "Closed autocracy",
+    v2x_regime == 1 ~ "Electoral autocracy",
+    v2x_regime == 2 ~ "Electoral democracy",
+    v2x_regime == 3 ~ "Liberal democracy")) %>%
+  select(-Difference, -Process, -v2x_regime, -year) %>%
+  full_join(clean_pop, by = "country_name") %>%
+  arrange(country_name) %>%
+  select(-country_id) %>%
+  drop_na()
+
+# data for the fourth visualization:
+write_xlsx(treemap, "treemap.xlsx")
+```
+
+
+### 5.5. Fifth and sixth visualizations: Who owns Democracy? (Part I and II)
+
+#### 5.5.1. Loading the downloaded and externally cleaned data of the Human Development Index
+
+The external cleaning mainly focused on deleting unnecessary rows and renaming countries, as done in the previous step of this code.
+
+```{r}
+hdi <- read_excel("HDI_cleaned.xlsx") %>%
+  rename(country_name = Country)
+```
+
+#### 5.5.2. Preparing the data for the visualizations
+
+```{r}
+clean_treemap <- treemap %>%
+  select(country_name, regime_type)
+
+ldi_vs_hdi <- ldi %>%
+  select("country_name", "2023") %>%
+  full_join(clean_pop, by = "country_name") %>%
+  mutate(pop = pop*1000) %>%
+  full_join(hdi, by = "country_name") %>%
+  rename(Population = pop,
+         LDI = "2023") %>%
+  drop_na() %>%
+  mutate(Human_Development = factor(Human_Development,
+                                    levels = c("Very high human development",
+                                               "High human development",
+                                               "Medium human development",
+                                               "Low human development"))) %>%
+  full_join(clean_treemap, by = "country_name") %>%
+  rename(Country = country_name) %>%
+  arrange(Human_Development)
+
+# data for visualizations fifth and sixth:
+write_xlsx(ldi_vs_hdi, "ldi_vs_hdi.xlsx")
+```
+
+
+### 5.6. The seventh visualization: Far-right, far less rights (radar plots)
+
+Indices used for comparison:
+- Egalitarian component index (v2x_egal): broad equity across society
+- Equal protection index (v2xeg_eqprotec): legal protection for all
+- Equal access index (v2xeg_eqaccess): political access to all
+- Freedom of Expression and Alternative Sources of Information index (v2x_freexp_altinf): free speech and media
+- Liberal component index (v2x_liberal): checks on executive power
+- Equality before the law and individual liberty index (v2xcl_rol): rule of law and civil liberties
+
+Countries that recently shifted to far-right governments:
+- Italy
+- Netherlands
+- Finland
+- Sweden
+
+```{r}
+target_years <- c(2004, 2024)
+target_countries <- c("Italy", "Netherlands", "Finland", "Sweden")
+
+to_radar_chart <- vdem %>%
+  filter(year %in% target_years) %>%
+  filter(country_name %in% target_countries) %>%
+  select(country_name, year, v2x_egal, v2xeg_eqprotec, v2xeg_eqaccess, 
+         v2x_freexp_altinf, v2x_liberal, v2xcl_rol) %>%
+  mutate(year = case_when(
+    year == "2004" ~ "20 years ago",
+    year == "2024" ~ "Now"
+  ))
+
+write_xlsx(to_radar_chart, "to_radar_chart.xlsx")
+```
+
+
+## 6. References
+
+- Arel-Bundock, V., Enevoldsen, N., & Yetman, C. J. (2018). countrycode: An R package to convert country names and country codes. Journal of Open Source Software, 3(28), 848.
+
+- Nord, Marina, David Altman, Fabio Angiolillo, Tiago Fernandes, Ana Good God, and Staffan I. Lindberg. 2025. Democracy Report 2025: 25 Years of Autocratization – Democracy Trumped? University of Gothenburg: V-Dem Institute.
+
+- [wpp2024](https://github.com/PPgp/wpp2024)
+
+- [Human Development Index (HDI)](https://hdr.undp.org/data-center/human-development-index#/indicies/HDI)
+
+
